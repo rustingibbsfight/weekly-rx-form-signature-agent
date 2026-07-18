@@ -10,3 +10,5 @@ node_modules/
 dist/
 __pycache__/
 *.pyc
+.vercel
+.env*

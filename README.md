@@ -29,6 +29,8 @@ scripts/get-google-refresh-token.mjs  # one-time OAuth token mint helper
 
 ## Setup
 
+**Full walkthrough: [docs/GO-LIVE.md](docs/GO-LIVE.md)** — includes a no-console gcloud path for the Google credentials and a troubleshooting table. The short version follows.
+
 Requires Node 24+ and the Vercel CLI (`npm i -g vercel`).
 
 ### 1. Deploy the project
@@ -39,13 +41,14 @@ vercel link                                # create/link the Vercel project
 VERCEL_USE_EXPERIMENTAL_FRAMEWORKS=1 vercel deploy --prod
 ```
 
-### 2. Google Drive access (fightweightgain account)
+### 2. Google Drive access (rustin@fightweightgain.com)
 
-1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (any project), enable the **Google Drive API** and create an **OAuth client ID** of type **Web application** with `http://localhost:53682` added to *Authorized redirect URIs*. If the OAuth consent screen is in *Testing* mode, add the fightweightgain account as a test user.
-2. Mint the refresh token locally, signed in to the browser as the **fightweightgain** account:
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials) (any project), enable the **Google Drive API** and create or reuse an **OAuth client ID** of type **Web application** with `http://localhost:53682` added to *Authorized redirect URIs*. On a Workspace account, set the consent screen to **Internal** (no test users, no verification).
+2. Mint the refresh token locally, signed in to the browser as **rustin@fightweightgain.com**:
    ```bash
    GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... node scripts/get-google-refresh-token.mjs
    ```
+   *Alternative:* if gcloud is installed, skip the console entirely — see Path B in [docs/GO-LIVE.md](docs/GO-LIVE.md).
 3. In Drive, note the id of the parent **Rx forms** folder (the one that contains the weekly dated subfolders) from its URL: `https://drive.google.com/drive/folders/<RX_PARENT_FOLDER_ID>`.
 
 ### 3. Slack

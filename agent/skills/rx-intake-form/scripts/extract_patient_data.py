@@ -20,10 +20,18 @@ import re
 import sys
 
 try:
-    import fitz  # PyMuPDF
+    # PyMuPDF >= 1.24 ships the `pymupdf` name; the legacy `fitz` alias is
+    # deprecated and slated for removal, so prefer the modern one.
+    import pymupdf as fitz
 except ImportError:
-    print("Error: PyMuPDF (fitz) is required. Install with: pip install PyMuPDF --break-system-packages")
-    sys.exit(1)
+    try:
+        import fitz  # PyMuPDF < 1.24
+    except ImportError:
+        print(
+            "Error: PyMuPDF is required. Install with: "
+            "pip install --break-system-packages PyMuPDF"
+        )
+        sys.exit(1)
 
 
 # All known labels in the consult form (labels that appear on their own lines)

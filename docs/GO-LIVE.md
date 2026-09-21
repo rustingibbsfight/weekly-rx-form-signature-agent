@@ -116,4 +116,5 @@ VERCEL_USE_EXPERIMENTAL_FRAMEWORKS=1 vercel deploy --prod
 | "Google Drive is not configured" in the run | One of the three `GOOGLE_*` vars is missing in Production; redeploy after adding. |
 | `invalid_grant` on token refresh | Refresh token revoked or minted as the wrong account; re-run Step 3 signed in as rustin@fightweightgain.com. |
 | Folder found but "no forms" | The weekly folder name needs a recognizable date; the matcher is loose but won't guess undated names. |
+| `SandboxTemplateNotProvisionedError` on every bash call | Should no longer happen: the sandbox installs its Python deps per session instead of baking a template, so there is no template to lose. If it reappears, something reintroduced a `bootstrap()` hook or `agent/sandbox/workspace/**` seed files in `agent/sandbox/sandbox.ts` — which recreates the template, and Vercel reaps that template after a couple of weeks. A redeploy rebuilds it; removing the bootstrap fixes it for good. |
 | Cron fired at the wrong hour | Vercel cron is UTC-only: `0 23 * * 6` = 4 pm PDT / 3 pm PST. Use `0 0 * * 0` for 4 pm PST in winter (edit `agent/schedules/weekly-rx-forms.ts`). |

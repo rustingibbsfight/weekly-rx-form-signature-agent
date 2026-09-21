@@ -22,7 +22,7 @@ agent/
   channels/slack.ts           # Slack channel (Vercel Connect credentials)
   channels/eve.ts             # HTTP/dev-REPL channel
   schedules/weekly-rx-forms.ts# Saturday cron → runs the workflow into Slack
-  sandbox/sandbox.ts          # sandbox bootstrap: pip install reportlab pypdf PyMuPDF
+  sandbox/sandbox.ts          # per-session setup: pip install pinned reportlab, pypdf, PyMuPDF
 lib/drive.ts                  # Google Drive REST client (OAuth refresh token)
 scripts/get-google-refresh-token.mjs  # one-time OAuth token mint helper
 ```
@@ -74,6 +74,7 @@ Set these on the Vercel project (Settings → Environment Variables), then redep
 | `RX_PARENT_FOLDER_ID` | parent Rx forms folder id |
 | `SLACK_CHANNEL_ID` | ops channel id for scheduled runs |
 | `SLACK_CONNECT_UID` | Connect UID if different from `slack/rx-forms-agent` |
+| `EVE_HTTP_AUTH_USER` / `EVE_HTTP_AUTH_PASSWORD` | *(optional)* both set opens the HTTP route behind Basic auth; unset keeps it closed |
 
 ### 5. Verify
 
@@ -86,7 +87,7 @@ Set these on the Vercel project (Settings → Environment Variables), then redep
 |---|---|
 | **Scheduled** | Nothing — fires Saturdays 23:00 UTC (= 4 pm PDT; 3 pm during PST — Vercel cron is UTC-only; switch the cron in `agent/schedules/weekly-rx-forms.ts` to `0 0 * * 0` if winter wall-clock matters). |
 | **On demand (Slack)** | @mention or DM the bot: "run the weekly rx forms". |
-| **On demand (HTTP)** | `curl -X POST https://<deployment>/eve/v1/session -H 'content-type: application/json' -d '{"message":"Process this week's Rx forms."}'` |
+| **On demand (HTTP)** | Off unless `EVE_HTTP_AUTH_USER` and `EVE_HTTP_AUTH_PASSWORD` are set on the project (without them the route returns `eve_production_auth_not_configured`). With both set: `curl -X POST https://<deployment>/eve/v1/session -u "$EVE_HTTP_AUTH_USER:$EVE_HTTP_AUTH_PASSWORD" -H 'content-type: application/json' -d '{"message":"Process this week's Rx forms."}'` |
 | **Local dev** | `cp .env.example .env`, fill it in, `npm run dev` (interactive REPL). Schedules don't fire in dev; trigger once with `curl -X POST http://localhost:3000/eve/v1/dev/schedules/weekly-rx-forms`. |
 
 ## Drive folder convention

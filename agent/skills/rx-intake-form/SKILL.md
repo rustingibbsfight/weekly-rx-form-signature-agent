@@ -20,10 +20,10 @@ SKILL_DIR="$HOME/.agents/skills/rx-intake-form"
 [ -d "$SKILL_DIR" ] || SKILL_DIR="/workspace/skills/rx-intake-form"
 ```
 
-Python dependencies (`reportlab`, `pypdf`, `PyMuPDF`) are pre-installed by the sandbox bootstrap. If an import fails anyway:
+Python dependencies (`reportlab`, `pypdf`, `PyMuPDF`) are installed automatically when the sandbox session starts. If an import fails anyway:
 
 ```bash
-python3 -m pip install reportlab pypdf PyMuPDF || python3 -m pip install --break-system-packages reportlab pypdf PyMuPDF
+python3 -m pip install --break-system-packages reportlab pypdf PyMuPDF || python3 -m pip install reportlab pypdf PyMuPDF
 ```
 
 ## Workflow A: from a consult PDF (primary)

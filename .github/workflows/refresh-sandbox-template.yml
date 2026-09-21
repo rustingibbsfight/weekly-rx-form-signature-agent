@@ -1,0 +1,89 @@
+name: Refresh sandbox template
+
+# Redeploys to production on a schedule so eve rebuilds the Vercel sandbox
+# template before Vercel reaps it.
+#
+# Why this exists: the template is a Vercel sandbox created with
+# `persistent: false`, so it is garbage-collected after roughly two weeks. The
+# runtime looks it up by name and cannot rebuild it (eve only rebuilds during
+# build-time prewarm), so once it is reaped every agent run fails with
+# SandboxTemplateNotProvisionedError. Bundling a skill forces the template to
+# exist, so it cannot be designed away — see agent/sandbox/sandbox.ts.
+#
+# Saturday 22:00 UTC, one hour before the agent's own 23:00 cron in
+# agent/schedules/weekly-rx-forms.ts, so each weekly run starts against a
+# freshly built template.
+#
+# Setup: add a VERCEL_TOKEN repository secret (Vercel → Account Settings →
+# Tokens, scoped to the rustingibbsfight's projects team). The project and org
+# IDs below are plain identifiers, not secrets — they appear in Vercel URLs.
+
+on:
+  schedule:
+    - cron: "0 22 * * 6"
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-sandbox-template
+  cancel-in-progress: false
+
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: team_aXNu1wtKmLAVN5NOfz1YuZqR
+      VERCEL_PROJECT_ID: prj_q8y1EyL2hBy317aqcDdCdxPbNQTV
+      # eve is an experimental Vercel framework; the build fails without this.
+      VERCEL_USE_EXPERIMENTAL_FRAMEWORKS: "1"
+    steps:
+      # Checked via env rather than `if: secrets.X == ''` — the secrets context
+      # is not dependably available in step-level conditionals.
+      - name: Fail early without a token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::VERCEL_TOKEN secret is not set; the scheduled redeploy cannot run." >&2
+            echo "Add it under Settings → Secrets and variables → Actions." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      # No --prebuilt: the build must run on Vercel, because that is the only
+      # place eve's sandbox prewarm runs (it is gated on process.env.VERCEL).
+      # A prebuilt deploy would skip prewarm and leave the template missing —
+      # which is exactly how this broke on 2026-09-06.
+      # pipefail matters: without it `tee` would mask a failed deploy and the
+      # job would go green on a broken deployment.
+      - name: Deploy to production
+        run: |
+          set -euo pipefail
+          vercel deploy --prod --yes --token "$VERCEL_TOKEN" 2>&1 | tee deploy.log
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      # The whole point of the job. If prewarm did not run, the deploy
+      # "succeeded" while leaving the template unbuilt, and the agent will fail
+      # at its next run — so treat a missing prewarm line as a failure.
+      - name: Verify the sandbox template was built
+        run: |
+          if grep -q "initialized .* sandbox template" deploy.log; then
+            echo "Sandbox template prewarm ran:"
+            grep "sandbox template" deploy.log
+          else
+            echo "::error::Deploy finished but eve never prewarmed a sandbox template." >&2
+            echo "The agent will fail with SandboxTemplateNotProvisionedError." >&2
+            echo "--- deploy log ---" >&2
+            cat deploy.log >&2
+            exit 1
+          fi

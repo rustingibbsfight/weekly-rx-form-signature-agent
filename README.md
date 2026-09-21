@@ -22,7 +22,7 @@ agent/
   channels/slack.ts           # Slack channel (Vercel Connect credentials)
   channels/eve.ts             # HTTP/dev-REPL channel
   schedules/weekly-rx-forms.ts# Saturday cron → runs the workflow into Slack
-  sandbox/sandbox.ts          # per-session setup: pip install pinned reportlab, pypdf, PyMuPDF
+  sandbox/sandbox.ts          # sandbox bootstrap: pip install pinned reportlab, pypdf, PyMuPDF
 lib/drive.ts                  # Google Drive REST client (OAuth refresh token)
 scripts/get-google-refresh-token.mjs  # one-time OAuth token mint helper
 ```
@@ -75,6 +75,20 @@ Set these on the Vercel project (Settings → Environment Variables), then redep
 | `SLACK_CHANNEL_ID` | ops channel id for scheduled runs |
 | `SLACK_CONNECT_UID` | Connect UID if different from `slack/rx-forms-agent` |
 | `EVE_HTTP_AUTH_USER` / `EVE_HTTP_AUTH_PASSWORD` | *(optional)* both set opens the HTTP route behind Basic auth; unset keeps it closed |
+
+### 4b. Scheduled template refresh (required)
+
+The agent depends on a Vercel sandbox template that Vercel reaps after about two
+weeks, which silently breaks the weekly run until someone redeploys (see
+`agent/sandbox/sandbox.ts`). `.github/workflows/refresh-sandbox-template.yml`
+redeploys every Saturday at 22:00 UTC, an hour before the agent's own cron, to
+keep the template fresh.
+
+It needs one repository secret: **`VERCEL_TOKEN`** (Vercel → Account Settings →
+Tokens, scoped to the team that owns the project). Add it under *Settings →
+Secrets and variables → Actions*, then run the workflow once manually from the
+Actions tab to confirm it works. The job fails loudly if a deploy finishes
+without building a template.
 
 ### 5. Verify
 

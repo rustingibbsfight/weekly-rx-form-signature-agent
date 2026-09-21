@@ -22,7 +22,7 @@ agent/
   channels/slack.ts           # Slack channel (Vercel Connect credentials)
   channels/eve.ts             # HTTP/dev-REPL channel
   schedules/weekly-rx-forms.ts# Saturday cron → runs the workflow into Slack
-  sandbox/sandbox.ts          # sandbox bootstrap: pip install pinned reportlab, pypdf, PyMuPDF
+  sandbox/sandbox.ts          # per-session setup: pip install pinned reportlab, pypdf, PyMuPDF
 lib/drive.ts                  # Google Drive REST client (OAuth refresh token)
 scripts/get-google-refresh-token.mjs  # one-time OAuth token mint helper
 ```

@@ -79,16 +79,35 @@ Set these on the Vercel project (Settings → Environment Variables), then redep
 ### 4b. Scheduled template refresh (required)
 
 The agent depends on a Vercel sandbox template that Vercel reaps after about two
-weeks, which silently breaks the weekly run until someone redeploys (see
-`agent/sandbox/sandbox.ts`). `.github/workflows/refresh-sandbox-template.yml`
-redeploys every Saturday at 22:00 UTC, an hour before the agent's own cron, to
-keep the template fresh.
+weeks, which breaks the weekly run until someone redeploys (it was reaped on
+2026-09-21 and again on 2026-10-06). See `agent/sandbox/sandbox.ts` for why the
+template cannot be designed away.
+
+`.github/workflows/refresh-sandbox-template.yml` redeploys on **Mondays and
+Thursdays at 09:23 UTC**, keeping the gap well inside the reap window with a
+spare run in hand. It deliberately does not run on Saturday: the first version
+aimed to land an hour before the agent's own cron and GitHub fired it ~2 hours
+late both times, landing after it instead.
 
 It needs one repository secret: **`VERCEL_TOKEN`** (Vercel → Account Settings →
-Tokens, scoped to the team that owns the project). Add it under *Settings →
-Secrets and variables → Actions*, then run the workflow once manually from the
-Actions tab to confirm it works. The job fails loudly if a deploy finishes
-without building a template.
+Tokens, scoped to the team that owns the project), under *Settings → Secrets and
+variables → Actions*. Without it the workflow fails on its first step. After
+adding it, run the workflow once manually from the Actions tab to confirm — it
+fails loudly if a deploy completes without building a template.
+
+**If it fails, it opens a GitHub issue** ("Sandbox template refresh is failing")
+and comments on that same issue on later failures, so the problem reaches your
+notifications rather than sitting unseen in the Actions tab. Optionally set a
+`SLACK_WEBHOOK_URL` secret to also get a Slack ping; the issue is raised either
+way.
+
+Two ways this can still die quietly, both worth knowing:
+
+- GitHub **disables scheduled workflows after 60 days without commits**. If the
+  agent reports a provisioning error, check this workflow's run history first —
+  an empty recent history means the schedule was switched off, and any commit
+  (or the Actions tab) re-enables it.
+- The `VERCEL_TOKEN` can expire. That surfaces as the failure issue above.
 
 ### 5. Verify
 

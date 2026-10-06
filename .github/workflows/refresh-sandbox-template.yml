@@ -4,28 +4,46 @@ name: Refresh sandbox template
 # template before Vercel reaps it.
 #
 # Why this exists: the template is a Vercel sandbox created with
-# `persistent: false`, so it is garbage-collected after roughly two weeks. The
+# `persistent: false`, so it is garbage-collected after roughly two weeks (it
+# was reaped on 2026-09-21 and again on 2026-10-06, ~15 days apart). The
 # runtime looks it up by name and cannot rebuild it (eve only rebuilds during
 # build-time prewarm), so once it is reaped every agent run fails with
 # SandboxTemplateNotProvisionedError. Bundling a skill forces the template to
 # exist, so it cannot be designed away — see agent/sandbox/sandbox.ts.
 #
-# Saturday 22:00 UTC, one hour before the agent's own 23:00 cron in
-# agent/schedules/weekly-rx-forms.ts, so each weekly run starts against a
-# freshly built template.
+# SCHEDULE — Mondays and Thursdays, deliberately NOT Saturday.
+# The first version ran Saturday 22:00 UTC, aiming to land an hour before the
+# agent's own 23:00 cron. In practice GitHub fired it ~2 hours late both times
+# (00:14 and 00:21 UTC), i.e. AFTER the weekly run. Scheduled workflows are
+# queued best-effort and are routinely delayed under load, so nothing here may
+# depend on landing before the agent. Running midweek twice a week makes drift
+# irrelevant and leaves a spare run: the gap never exceeds 4 days against a
+# ~15-day reap window, so one failed or dropped run cannot cause an outage.
 #
 # Setup: add a VERCEL_TOKEN repository secret (Vercel → Account Settings →
 # Tokens, scoped to the rustingibbsfight's projects team). The project and org
 # IDs below are plain identifiers, not secrets — they appear in Vercel URLs.
+#
+# CAVEAT worth knowing: GitHub disables scheduled workflows in repositories
+# with no commit activity for 60 days. For a repo that is only touched when
+# something breaks, that is a real way for this to die quietly. If the agent
+# fails with a provisioning error, check this workflow's run history first —
+# an empty recent history means the schedule was disabled, and pushing any
+# commit (or re-enabling it in the Actions tab) restores it.
 
 on:
   schedule:
-    - cron: "0 22 * * 6"
+    - cron: "23 9 * * 1,4"
   workflow_dispatch:
 
 concurrency:
   group: refresh-sandbox-template
   cancel-in-progress: false
+
+permissions:
+  contents: read
+  # Needed by the failure reporter below to open/comment an issue.
+  issues: write
 
 jobs:
   redeploy:
@@ -77,6 +95,7 @@ jobs:
       # at its next run — so treat a missing prewarm line as a failure.
       - name: Verify the sandbox template was built
         run: |
+          set -uo pipefail
           if grep -q "initialized .* sandbox template" deploy.log; then
             echo "Sandbox template prewarm ran:"
             grep "sandbox template" deploy.log
@@ -86,4 +105,74 @@ jobs:
             echo "--- deploy log ---" >&2
             cat deploy.log >&2
             exit 1
+          fi
+
+      # A red run in the Actions tab is not a notification. The first two
+      # scheduled runs failed (missing VERCEL_TOKEN) and sat unnoticed for nine
+      # days, until the template was reaped and the agent went down. So failure
+      # has to reach somewhere people actually look.
+      #
+      # The GitHub issue is the guaranteed channel: it needs no setup, uses the
+      # automatic GITHUB_TOKEN, and GitHub emails and push-notifies the repo
+      # owner. The Slack post is best-effort on top, and only happens if a
+      # SLACK_WEBHOOK_URL secret exists — it is deliberately NOT the only
+      # channel, because an alert that depends on a secret nobody added is how
+      # this failure went unseen in the first place.
+      #
+      # `if: failure()` also covers the missing-token step above, so a
+      # misconfigured workflow now announces itself on its first run.
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          TITLE="Sandbox template refresh is failing"
+
+          # Unquoted EOF so $RUN_URL expands; backticks are escaped so the
+          # shell does not treat them as command substitution.
+          cat > failure-body.md <<EOF
+          The scheduled Vercel sandbox-template refresh failed.
+
+          Run: $RUN_URL
+
+          **Why this matters:** the agent's sandbox template is reaped by Vercel
+          roughly every two weeks, and this workflow is the only thing that
+          rebuilds it. While it keeps failing, the weekly Rx-form run will stop
+          working with \`SandboxTemplateNotProvisionedError\` — silently, apart
+          from the agent's own Slack message.
+
+          **Most likely cause:** the \`VERCEL_TOKEN\` repository secret is
+          missing or expired. Check the first step of the run log.
+
+          **To restore service in the meantime:**
+
+          \`\`\`
+          VERCEL_USE_EXPERIMENTAL_FRAMEWORKS=1 vercel deploy --prod
+          \`\`\`
+
+          (A full build — never \`--prebuilt\`, which skips the prewarm that
+          builds the template.)
+          EOF
+
+          # One rolling issue rather than a new one per failed run.
+          existing="$(gh issue list --state open --search "$TITLE in:title" \
+            --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          if [ -n "${existing:-}" ]; then
+            gh issue comment "$existing" --body-file failure-body.md \
+              || echo "::warning::could not comment on issue #$existing"
+          else
+            gh issue create --title "$TITLE" --body-file failure-body.md \
+              || echo "::warning::could not open an issue"
+          fi
+
+          if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+            payload="$(jq -n --arg t ":rotating_light: Rx-forms sandbox template refresh failed — the weekly run will break within ~2 weeks if this is not fixed. $RUN_URL" '{text: $t}')"
+            curl -sS -X POST -H 'content-type: application/json' \
+              --data "$payload" "$SLACK_WEBHOOK_URL" >/dev/null \
+              || echo "::warning::Slack notification failed"
+          else
+            echo "SLACK_WEBHOOK_URL not set; reported via GitHub issue only."
           fi
